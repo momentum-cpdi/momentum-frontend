@@ -1,0 +1,7 @@
+{
+  "name": "momentum-frontend",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "react-vite"
+}
