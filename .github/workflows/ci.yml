@@ -22,13 +22,24 @@ jobs:
         run: npm ci
       - name: Lint
         run: npm run lint
-        continue-on-error: true # TODO: retirer une fois le lint corrigé
       - name: Run unit tests
         run: npm run test.unit -- run
       - name: Typecheck
         run: npx tsc --noEmit
       - name: Build
         run: npx vite build
-
-
-        
+  end-to-end:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: 'npm'
+      - name: Cypress run
+        uses: cypress-io/github-action@v6
+        with:
+          start: npm run dev
+          wait-on: 'http://localhost:5173'
+          wait-on-timeout: 120
