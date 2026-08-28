@@ -10,7 +10,6 @@ on:
 jobs:
   quality:
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v7
       - name: Setup Node 
@@ -22,6 +21,7 @@ jobs:
         run: npm ci
       - name: Lint
         run: npm run lint
+        continue-on-error: true
       - name: Run unit tests
         run: npm run test.unit -- run
       - name: Typecheck
