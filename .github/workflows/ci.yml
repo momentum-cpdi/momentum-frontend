@@ -2,22 +2,44 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
   pull_request:
-    branches: [ main ]
+
+permissions:
+  contents: read
 
 jobs:
   security:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - name: Trivy scan
+      - name: Scan for fixed HIGH and CRITICAL vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
           severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
           exit-code: '1'
+      - name: Audit npm dependencies
+        run: npm audit --audit-level=high
+      - name: Generate Trivy JSON report
+        if: always()
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+          format: 'json'
+          output: 'trivy-report.json'
+          exit-code: '0'
+      - name: Upload Trivy report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report
+          path: trivy-report.json
+          if-no-files-found: warn
 
   quality:
     needs: security
@@ -33,16 +55,13 @@ jobs:
         run: npm ci
       - name: Lint
         run: npm run lint
-        continue-on-error: true
       - name: Run unit tests
-        run: npm run test.unit -- run
-      - name: Typecheck
-        run: npx tsc --noEmit
-      - name: Build
-        run: npx vite build
+        run: npm run test.unit -- --run
+      - name: Typecheck and build
+        run: npm run build
 
   end-to-end:
-    needs: security
+    needs: quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -54,6 +73,27 @@ jobs:
       - name: Cypress run
         uses: cypress-io/github-action@v7
         with:
-          start: npm run dev
-          wait-on: 'http://localhost:5173'
+          start: npm run dev -- --host 0.0.0.0
+          wait-on: 'http://127.0.0.1:5173'
           wait-on-timeout: 120
+          browser: chrome
+
+  smoke-test:
+    needs: [security, quality]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Start the production container and check /health
+        run: |
+          docker compose up --detach --build
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8081/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs frontend
+          exit 1
+      - name: Stop containers
+        if: always()
+        run: docker compose down
