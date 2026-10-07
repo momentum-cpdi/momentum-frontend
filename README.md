@@ -3,6 +3,15 @@
 Application Ionic/React servie comme un site statique. Docker Compose fournit un
 démarrage reproductible et un serveur Nginx non privilégié.
 
+## Interface
+
+Le tableau de bord présente les sports, matchs, classements et une équipe
+Fantasy de démonstration. Les scores et statistiques sont des exemples locaux,
+pas des données en direct ; les favoris, filtres et sélections Fantasy
+fonctionnent uniquement dans la session navigateur. L'interface n'est pas encore
+reliée au backend. Gardez les données d'exemple séparées dans
+`src/data/demoSports.ts` lors de l'ajout des adaptateurs API.
+
 ## Démarrer
 
 Prérequis : Docker Engine et Docker Compose v2.
