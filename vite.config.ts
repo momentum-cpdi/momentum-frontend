@@ -2,6 +2,7 @@
 
 import legacy from '@vitejs/plugin-legacy'
 import react from '@vitejs/plugin-react'
+import { loadEnv } from 'vite'
 import { defineConfig, type Plugin } from 'vitest/config'
 
 const healthEndpoint = (): Plugin => ({
@@ -29,15 +30,28 @@ const healthEndpoint = (): Plugin => ({
 })
 
 // https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [
-    react(),
-    legacy(),
-    healthEndpoint(),
-  ],
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    setupFiles: './src/setupTests.ts',
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+
+  return {
+    plugins: [
+      react(),
+      legacy(),
+      healthEndpoint(),
+    ],
+    server: {
+      proxy: {
+        // Même origine qu'en production : /api est relayé vers le backend local.
+        '/api': {
+          target: env.DEV_API_PROXY || 'http://localhost:8080',
+          changeOrigin: true,
+        },
+      },
+    },
+    test: {
+      globals: true,
+      environment: 'jsdom',
+      setupFiles: './src/setupTests.ts',
+    },
   }
 })

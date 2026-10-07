@@ -7,15 +7,19 @@ RUN npm ci
 
 COPY . .
 
-ARG VITE_API_BASE_URL=http://localhost:8080
+ARG VITE_API_BASE_URL=${VITE_API_BASE_URL}
 ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
 
 RUN npm run build
 
 FROM nginxinc/nginx-unprivileged:stable-alpine AS runtime
 
+# Adresse de l'API et DNS utilisés par le proxy /api (surchargeables au lancement).
+ENV API_UPSTREAM=http://api:8080 \
+    DNS_RESOLVER=127.0.0.11
+
 COPY --from=build --chown=101:101 /app/dist/ /usr/share/nginx/html/
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY nginx/default.conf.template /etc/nginx/templates/default.conf.template
 
 EXPOSE 8080
 

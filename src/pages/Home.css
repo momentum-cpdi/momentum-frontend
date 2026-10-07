@@ -303,6 +303,10 @@ input:focus-visible {
   width: 8px;
 }
 
+.demo-indicator--online .demo-indicator__dot {
+  background: var(--green);
+}
+
 .main-content {
   margin: 0 auto;
   max-width: 1420px;

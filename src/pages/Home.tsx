@@ -18,6 +18,7 @@ import {
 } from 'ionicons/icons';
 import MatchCard from '../components/MatchCard';
 import { demoMatches, fantasyPlayers, standings, type MatchStatus, type Sport } from '../data/demoSports';
+import { useBackend } from '../hooks/useBackend';
 import './Home.css';
 
 type Page = 'home' | 'matches' | 'standings' | 'fantasy';
@@ -52,6 +53,25 @@ const Home: React.FC = () => {
     () => new Set(['mbappe']),
   );
   const [teamCreated, setTeamCreated] = useState(false);
+  const backend = useBackend();
+
+  const backendLabel = {
+    checking: 'Connexion à l’API…',
+    online: 'API connectée',
+    offline: 'API indisponible · mode démo',
+  }[backend.status];
+
+  // Les filtres reflètent les sports actifs de l'API ; sans API, les deux sports de démo restent proposés.
+  const sportOptions = useMemo<[Sport, string][]>(() => {
+    const fallback: [Sport, string][] = [['football', 'Football'], ['basketball', 'Basketball']];
+    if (backend.status !== 'online') {
+      return fallback;
+    }
+    return fallback.flatMap(([value]) => {
+      const apiSport = backend.sports.find((sport) => sport.active && sport.type.toLowerCase() === value);
+      return apiSport ? [[value, apiSport.name] as [Sport, string]] : [];
+    });
+  }, [backend]);
 
   const filteredMatches = useMemo(() => {
     const query = search.trim().toLocaleLowerCase('fr');
@@ -160,9 +180,9 @@ const Home: React.FC = () => {
                   value={search}
                 />
               </label>
-              <div aria-label="Application en mode démonstration" className="demo-indicator">
+              <div aria-live="polite" className={`demo-indicator demo-indicator--${backend.status}`} role="status">
                 <span aria-hidden="true" className="demo-indicator__dot" />
-                Mode démo
+                {backendLabel}
               </div>
             </header>
 
@@ -176,25 +196,22 @@ const Home: React.FC = () => {
 
               <section aria-label="Filtrer les rencontres" className="filter-bar">
                 <div aria-label="Filtrer par sport" className="sport-filters" role="group">
-                  {([
-                    ['all', 'Tous les sports'],
-                    ['football', 'Football'],
-                    ['basketball', 'Basketball'],
-                  ] as const).map(([value, label]) => (
+                  {[['all', 'Tous les sports'], ...sportOptions].map(([value, label]) => (
                     <button
                       aria-pressed={sportFilter === value}
                       className={`filter-chip${sportFilter === value ? ' filter-chip--active' : ''}`}
                       key={value}
-                      onClick={() => setSportFilter(value)}
+                      onClick={() => setSportFilter(value as Sport | 'all')}
                       type="button"
                     >
-                      {value !== 'all' && <SportIcon sport={value} />}
+                      {value !== 'all' && <SportIcon sport={value as Sport} />}
                       {label}
                     </button>
                   ))}
                 </div>
                 <p className="data-notice">
                   <span aria-hidden="true">i</span> Scores de démonstration
+                  <span className="data-notice__api"> · {backendLabel}</span>
                 </p>
               </section>
 

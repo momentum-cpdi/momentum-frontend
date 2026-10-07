@@ -1,5 +1,30 @@
+import { vi } from 'vitest';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import Home from './pages/Home';
+
+const jsonResponse = (body: unknown) =>
+  Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(body) } as Response);
+
+test('falls back to demo mode when the API is unreachable', async () => {
+  render(<Home />);
+
+  expect(await screen.findAllByText(/API indisponible · mode démo/)).not.toHaveLength(0);
+  expect(screen.getByRole('button', { name: 'Football' })).toBeInTheDocument();
+});
+
+test('shows the connected status and the sports provided by the API', async () => {
+  vi.stubGlobal('fetch', vi.fn((url: string) => url.endsWith('/api/health')
+    ? jsonResponse({ status: 'UP', service: 'momentum-backend', timestamp: '2026-10-07T00:00:00Z' })
+    : jsonResponse([
+      { id: 1, name: 'Foot (API)', code: 'FOOT', type: 'FOOTBALL', active: true },
+      { id: 2, name: 'Basket (API)', code: 'BASKET', type: 'BASKETBALL', active: false },
+    ])));
+  render(<Home />);
+
+  expect(await screen.findByRole('status')).toHaveTextContent('API connectée');
+  expect(screen.getByRole('button', { name: 'Foot (API)' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /Basket/ })).not.toBeInTheDocument();
+});
 
 test('shows the accessible sports dashboard and its demo notice', async () => {
   render(<Home />);
