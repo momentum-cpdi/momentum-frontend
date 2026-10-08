@@ -55,7 +55,7 @@ export default defineConfig(({ mode }) => {
         reporter: ['text-summary', 'lcov'],
         include: ['src/**/*.{ts,tsx}'],
         exclude: ['src/**/*.test.{ts,tsx}', 'src/setupTests.ts', 'src/main.tsx', 'src/vite-env.d.ts'],
-        thresholds: { lines: 80, functions: 80, statements: 80, branches: 70 },
+        thresholds: { lines: 90, functions: 90, statements: 90, branches: 85 },
       },
     },
   }

@@ -1,0 +1,82 @@
+name: Deploy
+
+# Workflow réutilisable : déploie une image (par digest) sur un serveur via SSH puis vérifie /health.
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Environnement GitHub (staging ou production)
+        required: true
+        type: string
+      image:
+        description: Référence complète de l'image, par digest
+        required: true
+        type: string
+      host:
+        required: true
+        type: string
+      user:
+        required: true
+        type: string
+      path:
+        required: true
+        type: string
+      url:
+        description: URL publique de l'application (sans slash final)
+        required: true
+        type: string
+      port:
+        description: Port hôte publié par compose
+        required: false
+        type: string
+        default: '8081'
+    secrets:
+      DEPLOY_SSH_KEY:
+        required: true
+      DEPLOY_KNOWN_HOSTS:
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment:
+      name: ${{ inputs.environment }}
+      url: ${{ inputs.url }}
+    env:
+      IMAGE: ${{ inputs.image }}
+      TARGET: ${{ inputs.user }}@${{ inputs.host }}
+      DEPLOY_PATH: ${{ inputs.path }}
+      FRONTEND_PORT: ${{ inputs.port }}
+      DEPLOY_URL: ${{ inputs.url }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+      - name: Upload compose file and start the new image
+        run: |
+          SSH="ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes $TARGET"
+          $SSH "mkdir -p '$DEPLOY_PATH'"
+          scp -i ~/.ssh/id_deploy -o StrictHostKeyChecking=yes compose.yaml "$TARGET:$DEPLOY_PATH/compose.yaml"
+          $SSH "cd '$DEPLOY_PATH' && export FRONTEND_IMAGE='$IMAGE' FRONTEND_PORT='$FRONTEND_PORT' && docker compose pull && docker compose up -d --no-build --remove-orphans"
+      - name: Verify /health
+        run: |
+          for _ in {1..30}; do
+            if curl --fail --silent "$DEPLOY_URL/health"; then
+              exit 0
+            fi
+            sleep 3
+          done
+          echo "::error::$DEPLOY_URL/health ne répond pas - relancer le workflow CD sur la version précédente (voir docs/ops/runbook.md)."
+          exit 1

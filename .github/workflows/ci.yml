@@ -40,16 +40,10 @@ jobs:
         with:
           scan-type: 'fs'
           scan-ref: '.'
+          skip-dirs: 'node_modules,coverage,dist,.git'
           scanners: 'vuln,secret'
           severity: 'HIGH,CRITICAL'
           ignore-unfixed: true
-          exit-code: '1'
-      - name: Scan Dockerfile and compose misconfigurations
-        uses: aquasecurity/trivy-action@v0.36.0
-        with:
-          scan-type: 'config'
-          scan-ref: '.'
-          severity: 'HIGH,CRITICAL'
           exit-code: '1'
       - name: Audit npm dependencies
         run: npm audit --omit=dev --audit-level=high
@@ -151,6 +145,15 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
+      - name: Check the Dockerfile and compose file against Trivy rules (all severities)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          skip-dirs: 'node_modules,coverage,dist,.git'
+          severity: 'UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL'
+          format: 'table'
+          exit-code: '1'
       - uses: docker/setup-buildx-action@v4
       - name: Build the production image
         uses: docker/build-push-action@v7
@@ -164,6 +167,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           image-ref: momentum-frontend:ci
+          scanners: 'vuln,secret,misconfig'
           severity: 'HIGH,CRITICAL'
           ignore-unfixed: true
           exit-code: '1'
