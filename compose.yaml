@@ -7,7 +7,7 @@ services:
       args:
         # Vide = l'application appelle /api sur sa propre origine (proxy nginx, pas de CORS).
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
-    image: momentum-frontend:local
+    image: ${FRONTEND_IMAGE:-momentum-frontend:local}
     container_name: momentum-frontend
     environment:
       API_UPSTREAM: ${API_UPSTREAM:-http://api:8080}

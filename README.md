@@ -81,14 +81,40 @@ Application : `http://localhost:8081` · API directe : `http://localhost:8080/ap
 · e-mails d'alerte : `http://localhost:8025` (outils de supervision et Keycloak : fournis par le compose du backend, voir `docs/ops/audit-socle.md`). Exploitation (pannes, sauvegarde,
 restauration) : [`docs/ops/runbook.md`](docs/ops/runbook.md).
 
-## Livraison et sécurité
+## Livraison et sécurité (CI/CD)
 
-GitHub Actions exécute le lint, les tests, la compilation et les tests end-to-end
-sur chaque push et pull request. Le scan Trivy bloque le pipeline sur les
-vulnérabilités HIGH/CRITICAL corrigibles et publie le rapport JSON comme artefact.
-CodeQL complète cette analyse sur les push, pull requests et selon un calendrier
-hebdomadaire.
+**CI** (`.github/workflows/ci.yml`, sur chaque push de branche et pull request). Chaque job
+est bloquant : un seul échec rouge la pipeline.
 
+| Job | Contrôle |
+|---|---|
+| `secrets-scan` | Gitleaks sur tout l'historique Git |
+| `security` | Trivy (dépendances + secrets + mauvaises configurations Docker), `npm audit` ; rapport JSON en artefact |
+| `quality` | ESLint, `tsc`, tests unitaires avec **seuil de couverture** (80 % lignes/fonctions, 70 % branches), build |
+| `dockerfile-lint` | Hadolint |
+| `end-to-end` | Cypress |
+| `docker` | Build de l'image, scan Trivy de l'image, démarrage et tests de fumée (`/health`, CSP, SPA, repli 503) |
+
+CodeQL (`codeql.yml`) analyse le code à chaque push et chaque semaine ; Dependabot propose les mises
+à jour npm, Docker et GitHub Actions.
+
+**CD** (`.github/workflows/cd.yml`) :
+- push sur `main` : la CI complète est rejouée, puis l'image est publiée sur GHCR
+  (`ghcr.io/<owner>/<repo>:edge`) avec provenance, SBOM, scan Trivy et attestation ;
+- tag `vX.Y.Z` : idem avec les tags `X.Y.Z`/`X.Y`, puis déploiement par SSH (`docker compose pull`
+  + `up -d`) sur l'environnement GitHub `production`, suivi d'un contrôle de `/health`.
+
+Le déploiement est ignoré tant que la variable de dépôt `DEPLOY_HOST` n'est pas définie.
+À configurer dans *Settings → Secrets and variables → Actions* :
+
+| Type | Nom | Rôle |
+|---|---|---|
+| Variable | `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH` (défaut `/opt/momentum-frontend`), `DEPLOY_URL` | Serveur cible et URL publique |
+| Secret | `DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS` | Clé SSH dédiée et empreinte du serveur (`ssh-keyscan`) |
+
+Pour rendre les contrôles obligatoires, activez la protection de branche `main` en exigeant les jobs
+ci-dessus. Retour arrière : relancer le workflow CD sur le tag précédent.
+Le serveur doit déjà disposer de Docker, du réseau `momentum-net` (backend) et pouvoir lire l'image GHCR.
 ## Santé et journaux
 
 `GET http://localhost:8081/health` répond HTTP 200 avec `{"status":"ok"}`.
@@ -106,7 +132,8 @@ docker compose logs --follow --timestamps frontend
 ```powershell
 npm ci
 npm run lint
-npm run test.unit -- --run
+npm run typecheck
+npm run test.unit.ci   # tests + couverture (échoue sous les seuils)
 npm run build
 ```
 
@@ -117,7 +144,7 @@ terminal, puis exécutez `npm run test.e2e` dans un second.
 
 1. Créez une branche depuis `main` : `git switch -c feature/ma-fonctionnalite`.
 2. Développez en petits commits clairs (`feat:`, `fix:`, `docs:`, `chore:`).
-3. Avant de pousser, lancez `npm run lint`, `npm run test.unit -- --run` et `npm run build` : la CI exécute les mêmes contrôles et bloque la fusion en cas d'échec.
+3. Avant de pousser, lancez `npm run lint`, `npm run typecheck`, `npm run test.unit.ci` et `npm run build` : la CI exécute les mêmes contrôles et bloque la fusion en cas d'échec.
 4. Ouvrez une pull request décrivant le changement et la manière de le tester.
 
 Règles : aucun secret dans le code (utiliser `.env`, jamais commité), accessibilité préservée (libellés, contrastes, clavier), tests ajoutés ou mis à jour avec le code, documentation

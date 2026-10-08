@@ -1,32 +1,58 @@
 name: CI
 
+# Les pushs sur main et les tags v* passent par cd.yml, qui appelle ce workflow avant de publier.
 on:
   push:
+    branches-ignore: [main]
+    tags-ignore: ['v*']
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  security:
-    timeout-minutes: 15
+  secrets-scan:
+    name: Gitleaks
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
-      - name: Scan for fixed HIGH and CRITICAL vulnerabilities
+        with:
+          fetch-depth: 0
+      - name: Detect leaked secrets in the full history
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest \
+            detect --source /repo --redact --verbose --exit-code 1
+
+  security:
+    name: Trivy + npm audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - name: Scan dependencies for fixed HIGH and CRITICAL vulnerabilities
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
+          scanners: 'vuln,secret'
           severity: 'HIGH,CRITICAL'
           ignore-unfixed: true
           exit-code: '1'
+      - name: Scan Dockerfile and compose misconfigurations
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
       - name: Audit npm dependencies
-        run: npm audit --audit-level=high
+        run: npm audit --omit=dev --audit-level=high
       - name: Generate Trivy JSON report
         if: always()
         uses: aquasecurity/trivy-action@v0.36.0
@@ -47,47 +73,60 @@ jobs:
           if-no-files-found: warn
 
   quality:
-    timeout-minutes: 15
-    needs: security
+    name: Lint, types, unit tests, build
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
-      - name: Setup Node 
-        uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 24
-          cache: 'npm'
-      - name: Install dependencies
-        run: npm ci
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci --ignore-scripts
       - name: Lint
         run: npm run lint
-      - name: Run unit tests
+      - name: Typecheck
+        run: npm run typecheck
+      - name: Unit tests with coverage (fails below thresholds)
         run: npm run test.unit.ci
-      - name: Typecheck and build
+      - name: Build
         run: npm run build
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage
+          if-no-files-found: ignore
+      - name: Upload build
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          retention-days: 7
 
   dockerfile-lint:
+    name: Hadolint
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
-      - name: Lint Dockerfile
-        uses: hadolint/hadolint-action@v3.1.0
+      - uses: hadolint/hadolint-action@v3.1.0
         with:
           dockerfile: Dockerfile
           failure-threshold: warning
 
   end-to-end:
-    timeout-minutes: 15
+    name: Cypress
     needs: quality
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - name: Setup Node
-        uses: actions/setup-node@v7
+      - uses: actions/setup-node@v7
         with:
-          node-version: 24
-          cache: 'npm'
+          node-version-file: .nvmrc
+          cache: npm
       - name: Cypress run
         uses: cypress-io/github-action@v7
         with:
@@ -95,17 +134,43 @@ jobs:
           wait-on: 'http://127.0.0.1:5173'
           wait-on-timeout: 120
           browser: chrome
+      - name: Upload Cypress artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-artifacts
+          path: |
+            cypress/screenshots
+            cypress/videos
+          if-no-files-found: ignore
 
-  smoke-test:
-    needs: [security, quality]
+  docker:
+    name: Docker build, image scan, smoke test
+    needs: [secrets-scan, security, quality, dockerfile-lint]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-      - name: Start the production container and check /health
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the production image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          load: true
+          tags: momentum-frontend:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Scan the image (fails on fixed HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: momentum-frontend:ci
+          severity: 'HIGH,CRITICAL'
+          ignore-unfixed: true
+          exit-code: '1'
+      - name: Start the container and check /health
         run: |
-          docker compose up --detach --build
-          for attempt in {1..30}; do
+          FRONTEND_IMAGE=momentum-frontend:ci docker compose up --detach --no-build
+          for _ in {1..30}; do
             if curl --fail --silent http://127.0.0.1:8081/health; then
               exit 0
             fi
@@ -113,10 +178,14 @@ jobs:
           done
           docker compose logs frontend
           exit 1
-      - name: Check security headers and API fallback
+      - name: Check security headers, SPA fallback and API fallback
         run: |
           curl --fail --silent --head http://127.0.0.1:8081/ | grep -i "content-security-policy"
-          test "$(curl --silent --output /dev/null --write-out "%{http_code}" http://127.0.0.1:8081/api/sports)" = "503"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8081/home)" = "200"
+          test "$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8081/api/sports)" = "503"
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs frontend
       - name: Stop containers
         if: always()
         run: docker compose down

@@ -11,7 +11,7 @@
     "test.unit": "vitest",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
-    "test.unit.ci": "vitest run"
+    "test.unit.ci": "vitest run --coverage"
   },
   "engines": {
     "node": ">=24"
@@ -39,6 +39,7 @@
     "@types/react": "19.0.10",
     "@types/react-dom": "19.0.4",
     "@vitejs/plugin-react": "^6.0.0",
+    "@vitest/coverage-v8": "^5.0.3",
     "cypress": "^16.1.1",
     "eslint": "^9.20.1",
     "eslint-plugin-react": "^7.32.2",
@@ -49,7 +50,7 @@
     "typescript": "~5.9.0",
     "typescript-eslint": "^8.24.0",
     "vite": "^8.0.0",
-    "vitest": "^4.0.0"
+    "vitest": "^5.0.3"
   },
   "description": "Momentum — application web et mobile (Ionic React)"
 }
