@@ -1,0 +1,12 @@
+.git
+.github
+.idea
+.vscode
+node_modules
+dist
+coverage
+cypress
+.env
+.env.*
+!.env.example
+npm-debug.log*
