@@ -12,7 +12,11 @@ flowchart LR
         ingest["ingest<br/>Spring Boot<br/>:8081"]
         db[("postgres<br/>:5432")]
         backup["backup<br/>pg_dump quotidien"]
-        alerter["alerter<br/>sonde /health"]
+        kc["keycloak<br/>OIDC :8180"]
+        prom["prometheus"]
+        graf["grafana :3000"]
+        am["alertmanager"]
+        bb["blackbox-exporter"]
         mail["mailpit<br/>SMTP :1025 / UI :8025"]
     end
 
@@ -25,9 +29,13 @@ flowchart LR
     ingest -.->|"collecte (prévu)"| ext
     backup -->|pg_dump| db
     backup --> vol[("backups/")]
-    alerter -->|"GET /actuator/health"| api
-    alerter -->|"GET /actuator/health"| ingest
-    alerter -->|e-mail| mail
+    user -->|"connexion OIDC"| kc
+    api -->|"clés JWT"| kc
+    prom -->|"/actuator/prometheus"| api
+    prom -->|"/actuator/prometheus"| ingest
+    prom --> bb -->|"GET /health"| fe
+    graf -->|PromQL| prom
+    prom -->|alertes| am -->|e-mail| mail
 ```
 
 ## Composants
@@ -39,7 +47,9 @@ flowchart LR
 | `momentum-ingest-api` | Spring Boot | Ingestion de données sportives (squelette) |
 | `momentum-domain` | Bibliothèque JPA | Entités et dépôts partagés par `api` et `ingest` |
 | `postgres` | PostgreSQL 18 | Base unique ; volume `postgres_data` |
-| `backup` / `alerter` / `mailpit` | Shell + images officielles | Sauvegarde, alerte, boîte mail de test (voir `docs/ops/runbook.md`) |
+| `keycloak` | Keycloak 26 | Identités et jetons OIDC (realm `momentum`) ; l'API valide les jetons JWT |
+| `prometheus` / `alertmanager` / `grafana` / `blackbox` | Images officielles | Métriques, alertes e-mail, tableau de bord, sonde du frontend |
+| `backup` / `mailpit` | Shell + images officielles | Sauvegarde `pg_dump`, boîte mail de test (voir `docs/ops/runbook.md`) |
 
 ## Flux d'une requête
 
@@ -64,7 +74,9 @@ sequenceDiagram
   (`CORS_ALLOWED_ORIGINS`) pour les appels directs.
 - **Deux piles Compose, un réseau** : chaque dépôt se lance seul ; `momentum-net` les relie.
 - **Configuration par variables d'environnement** (`.env`), aucun secret dans le code.
-- **Sécurité par défaut** : toute route est authentifiée sauf liste blanche dans `SecurityConfig`.
+- **Sécurité par défaut** : toute route est authentifiée sauf liste blanche dans `SecurityConfig` ; les écritures exigent un jeton Keycloak avec le rôle `admin`.
+- **Secrets** : uniquement dans `.env` (non versionné), obligatoires au lancement. Keycloak gère les identités, pas les secrets d'infrastructure (coffre de la plateforme en production).
+- **Supervision** : l'actuator de l'API est sur un port interne (9090) non publié ; Prometheus le lit via le réseau Docker.
 - **Données sportives** : matchs et classements sont encore des données de démonstration côté frontend.
 
 ## Documentation de l'API
@@ -78,4 +90,4 @@ sequenceDiagram
 | GET | `/api/health` | publique | 200 `{status, service, timestamp}` |
 | GET | `/actuator/health` | publique | 200 `{"status":"UP"}` |
 | GET | `/api/sports` | publique | 200 liste de `{id, name, code, type, active}` |
-| POST | `/api/sports` | HTTP Basic | 201 sport créé · 400 données invalides · 401 |
+| POST | `/api/sports` | Bearer Keycloak, rôle `admin` | 201 sport créé · 400 données invalides · 401 · 403 |

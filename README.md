@@ -78,7 +78,7 @@ docker compose up -d --build
 ```
 
 Application : `http://localhost:8081` · API directe : `http://localhost:8080/api/health`
-· e-mails d'alerte : `http://localhost:8025`. Exploitation (pannes, sauvegarde,
+· e-mails d'alerte : `http://localhost:8025` (outils de supervision et Keycloak : fournis par le compose du backend, voir `docs/ops/audit-socle.md`). Exploitation (pannes, sauvegarde,
 restauration) : [`docs/ops/runbook.md`](docs/ops/runbook.md).
 
 ## Livraison et sécurité

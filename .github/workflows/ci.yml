@@ -7,8 +7,13 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   security:
+    timeout-minutes: 15
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -42,6 +47,7 @@ jobs:
           if-no-files-found: warn
 
   quality:
+    timeout-minutes: 15
     needs: security
     runs-on: ubuntu-latest
     steps:
@@ -56,11 +62,23 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Run unit tests
-        run: npm run test.unit -- --run
+        run: npm run test.unit.ci
       - name: Typecheck and build
         run: npm run build
 
+  dockerfile-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Lint Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          failure-threshold: warning
+
   end-to-end:
+    timeout-minutes: 15
     needs: quality
     runs-on: ubuntu-latest
     steps:
@@ -81,6 +99,7 @@ jobs:
   smoke-test:
     needs: [security, quality]
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v7
       - name: Start the production container and check /health
@@ -94,6 +113,10 @@ jobs:
           done
           docker compose logs frontend
           exit 1
+      - name: Check security headers and API fallback
+        run: |
+          curl --fail --silent --head http://127.0.0.1:8081/ | grep -i "content-security-policy"
+          test "$(curl --silent --output /dev/null --write-out "%{http_code}" http://127.0.0.1:8081/api/sports)" = "503"
       - name: Stop containers
         if: always()
         run: docker compose down

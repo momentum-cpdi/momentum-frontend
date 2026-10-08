@@ -1,21 +1,19 @@
 {
-  "short_name": "Ionic App",
-  "name": "My Ionic App",
+  "short_name": "Momentum",
+  "name": "Momentum — le sport, en mouvement",
+  "description": "Suivez les matchs, les classements et vos équipes préférées.",
+  "lang": "fr",
   "icons": [
     {
-      "src": "assets/icon/favicon.png",
-      "sizes": "64x64 32x32 24x24 16x16",
-      "type": "image/x-icon"
-    },
-    {
-      "src": "assets/icon/icon.png",
+      "src": "/favicon.png",
+      "sizes": "any",
       "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "maskable"
+      "purpose": "any"
     }
   ],
-  "start_url": ".",
+  "start_url": "/",
+  "scope": "/",
   "display": "standalone",
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff"
+  "theme_color": "#f5f7f6",
+  "background_color": "#f5f7f6"
 }

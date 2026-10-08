@@ -1,6 +1,5 @@
 /// <reference types="vitest" />
 
-import legacy from '@vitejs/plugin-legacy'
 import react from '@vitejs/plugin-react'
 import { loadEnv } from 'vite'
 import { defineConfig, type Plugin } from 'vitest/config'
@@ -36,7 +35,6 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
-      legacy(),
       healthEndpoint(),
     ],
     server: {
